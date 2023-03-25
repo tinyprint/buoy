@@ -24,6 +24,8 @@ type (
 		Version    int                     `json:"version"`
 		RootDomain string                  `json:"rootDomain"`
 		Services   map[string]ServiceGroup `json:"services"`
+		ConfigDir  string                  `json:"-"`
+		ConfigFile string                  `json:"-"`
 	}
 
 	// ServiceGroup is a group of services that share the same domain
@@ -93,4 +95,41 @@ func CreateConfig(configDir string) error {
 	}
 
 	return nil
+}
+
+// LoadConfig loads the config file from the given directory
+func LoadConfig(configDir string) (Config, error) {
+	configDir = getAbsPath(configDir)
+	configFilePath := path.Join(configDir, DefaultConfigFilename)
+	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		return Config{}, fmt.Errorf("config file %s does not exist", configFilePath)
+	}
+
+	file, err := os.Open(configFilePath)
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to open config file %s: %s", configFilePath, err)
+	}
+
+	defer file.Close()
+
+	config := Config{
+		ConfigDir:  configDir,
+		ConfigFile: configFilePath,
+	}
+	err = json.NewDecoder(file).Decode(&config)
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to decode config file %s: %s", configFilePath, err)
+	}
+
+	return config, nil
+}
+
+// GetSSLCertPath returns the path to the SSL cert
+func (c Config) GetSSLCertPath() string {
+	return path.Join(c.ConfigDir, "cert.pem")
+}
+
+// GetSSLKeyPath returns the path to the SSL key
+func (c Config) GetSSLKeyPath() string {
+	return path.Join(c.ConfigDir, "key.pem")
 }
