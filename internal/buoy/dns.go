@@ -1,4 +1,4 @@
-package dns
+package buoy
 
 import (
 	"fmt"
@@ -6,13 +6,6 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 )
-
-// HandlePacket is the entry point for the resolver
-func HandlePacket(pc net.PacketConn, addr net.Addr, buf []byte) {
-	if err := handlePacket(pc, addr, buf); err != nil {
-		fmt.Printf("dns resolver could not handle packet [%s]: %s\n", addr.String(), err)
-	}
-}
 
 func handlePacket(pc net.PacketConn, addr net.Addr, buf []byte) error {
 	p := dnsmessage.Parser{}
@@ -57,4 +50,30 @@ func handlePacket(pc net.PacketConn, addr net.Addr, buf []byte) error {
 	}
 
 	return nil
+}
+
+func handle(pc net.PacketConn, addr net.Addr, buf []byte) {
+	if err := handlePacket(pc, addr, buf); err != nil {
+		fmt.Printf("# dns-resolver - could not handle packet [%s]: %s\n", addr.String(), err)
+	}
+}
+
+// StartDNSResolver starts the DNS resolver
+func StartDNSResolver() error {
+	p, listenError := net.ListenPacket("udp", ":8053")
+	if listenError != nil {
+		return fmt.Errorf("error starting dns-resolver: %s", listenError)
+	}
+	defer p.Close()
+
+	for {
+		buf := make([]byte, 512)
+		n, addr, readError := p.ReadFrom(buf)
+		fmt.Printf("# dns-resolver - connection [%s]...\n", addr.String())
+		if readError != nil {
+			fmt.Printf("# dns-resolver - connection error [%s]: %s\n", addr.String(), readError)
+			continue
+		}
+		go handle(p, addr, buf[:n])
+	}
 }

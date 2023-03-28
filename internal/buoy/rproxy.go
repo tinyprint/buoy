@@ -1,12 +1,10 @@
-package rproxy
+package buoy
 
 import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-
-	"github.com/tinyprint/buoy/internal/pkg/config"
 )
 
 var (
@@ -14,17 +12,14 @@ var (
 )
 
 type reverseProxyHandler struct {
-	config     config.Config
 	serviceMap map[string]int
 }
 
-func buildServiceMap(config config.Config) map[string]int {
+func buildServiceMap(domain string, services []Service) map[string]int {
 	serviceMap := map[string]int{}
-	for serviceGroupID, serviceGroup := range config.Services {
-		for servicePartialID, service := range serviceGroup {
-			serviceID := fmt.Sprintf("%s.%s%s", serviceGroupID, config.RootDomain, servicePartialID)
-			serviceMap[serviceID] = service.Port
-		}
+	for _, service := range services {
+		serviceID := fmt.Sprintf("%s.%s/%s", service.Subdomain, domain, service.Path)
+		serviceMap[serviceID] = service.Port
 	}
 	return serviceMap
 }
@@ -46,7 +41,7 @@ func getServiceID(host string, path string) string {
 }
 
 func (h *reverseProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("received request host=%s path=%s\n", r.Host, r.URL.Path)
+	fmt.Printf("# reverse-proxy - received request host=%s path=%s\n", r.Host, r.URL.Path)
 
 	serviceID := getServiceID(r.Host, r.URL.Path)
 
@@ -65,23 +60,22 @@ func (h *reverseProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	fmt.Fprintf(w, "nothing to see here")
+	fmt.Fprintf(w, "buoy - nothing to see here")
 }
 
 // StartReverseProxy starts the reverse proxy
-func StartReverseProxy(config config.Config) error {
-	fmt.Println("starting Buoy reverse proxy")
+func StartReverseProxy(domain string, services []Service, certFile string, keyFile string) error {
+	fmt.Println("# reverse-proxy - starting...")
 
-	serviceMap := buildServiceMap(config)
+	serviceMap := buildServiceMap(domain, services)
 
 	h := &reverseProxyHandler{
-		config:     config,
 		serviceMap: serviceMap,
 	}
 	reverseProxyServer := &http.Server{
 		Addr:    ":443",
 		Handler: h,
 	}
-	err := reverseProxyServer.ListenAndServeTLS(config.GetSSLCertPath(), config.GetSSLKeyPath())
+	err := reverseProxyServer.ListenAndServeTLS(certFile, keyFile)
 	return fmt.Errorf("error listening and serving TLS: %s", err)
 }
