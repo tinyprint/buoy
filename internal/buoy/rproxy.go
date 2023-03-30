@@ -15,10 +15,10 @@ type reverseProxyHandler struct {
 	serviceMap map[string]int
 }
 
-func buildServiceMap(domain string, services []Service) map[string]int {
+func buildServiceMap(services []Service) map[string]int {
 	serviceMap := map[string]int{}
 	for _, service := range services {
-		serviceID := fmt.Sprintf("%s.%s/%s", service.Subdomain, domain, service.Path)
+		serviceID := fmt.Sprintf("%s.%s/%s", service.Subdomain, service.Domain, service.Path)
 		serviceMap[serviceID] = service.Port
 	}
 	return serviceMap
@@ -64,10 +64,10 @@ func (h *reverseProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 }
 
 // StartReverseProxy starts the reverse proxy
-func StartReverseProxy(domain string, services []Service, certFile string, keyFile string) error {
+func StartReverseProxy(services []Service, certFile string, keyFile string) error {
 	fmt.Println("# reverse-proxy - starting...")
 
-	serviceMap := buildServiceMap(domain, services)
+	serviceMap := buildServiceMap(services)
 
 	h := &reverseProxyHandler{
 		serviceMap: serviceMap,

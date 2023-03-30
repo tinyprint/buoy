@@ -9,6 +9,7 @@ import (
 type (
 	// Service is a service to be proxied
 	Service struct {
+		Domain    string
 		Subdomain string
 		Path      string
 		Port      int
@@ -16,7 +17,7 @@ type (
 )
 
 // ParseServices parses a list of services from a list of strings
-func ParseServices(serviceArgs []string) ([]Service, error) {
+func ParseServices(domain string, serviceArgs []string) ([]Service, error) {
 	services := make([]Service, len(serviceArgs))
 	for i, serviceArg := range serviceArgs {
 		servicePieces := strings.Split(serviceArg, ":")
@@ -42,6 +43,7 @@ func ParseServices(serviceArgs []string) ([]Service, error) {
 		}
 
 		services[i] = Service{
+			Domain:    domain,
 			Subdomain: subdomain,
 			Path:      path,
 			Port:      port,
@@ -49,4 +51,12 @@ func ParseServices(serviceArgs []string) ([]Service, error) {
 	}
 
 	return services, nil
+}
+
+// DomainName returns the domain name for the service
+func (s Service) DomainName() string {
+	if s.Subdomain == "" {
+		return s.Domain
+	}
+	return s.Subdomain + "." + s.Domain
 }

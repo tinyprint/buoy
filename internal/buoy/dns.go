@@ -60,11 +60,13 @@ func handle(pc net.PacketConn, addr net.Addr, buf []byte) {
 
 // StartDNSResolver starts the DNS resolver
 func StartDNSResolver() error {
+	fmt.Println("# dns-resolver - starting...")
 	p, listenError := net.ListenPacket("udp", ":8053")
 	if listenError != nil {
 		return fmt.Errorf("error starting dns-resolver: %s", listenError)
 	}
 	defer p.Close()
+	fmt.Println("# dns-resolver - started")
 
 	for {
 		buf := make([]byte, 512)
