@@ -23,6 +23,7 @@ func getPassword() string {
 
 const domain = "b.com"
 const configDir = "$HOME/.buoy"
+const resolverPort = 8053
 
 func main() {
 	setup := flag.Bool("setup", false, "setup the buoy config directory and certs")
@@ -42,7 +43,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		dnsError := buoy.SetupDNSResolver(uid, gid, domain)
+		dnsError := buoy.SetupDNSResolver(uid, gid, domain, resolverPort)
 		if dnsError != nil {
 			fmt.Printf("\nerror setting up dns resolver: %s\n", dnsError.Error())
 			os.Exit(1)
@@ -90,7 +91,7 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-		dnsError := buoy.StartDNSResolver()
+		dnsError := buoy.StartDNSResolver(resolverPort)
 		if dnsError != nil {
 			fmt.Printf("\nerror starting dns resolver: %s\n", dnsError.Error())
 			os.Exit(1)

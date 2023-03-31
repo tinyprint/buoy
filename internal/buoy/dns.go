@@ -9,7 +9,6 @@ import (
 )
 
 const resolverDir = "/etc/resolver"
-const resolverPort = 8053
 
 func handlePacket(pc net.PacketConn, addr net.Addr, buf []byte) error {
 	p := dnsmessage.Parser{}
@@ -63,7 +62,7 @@ func handle(pc net.PacketConn, addr net.Addr, buf []byte) {
 }
 
 // StartDNSResolver starts the DNS resolver
-func StartDNSResolver() error {
+func StartDNSResolver(resolverPort int) error {
 	fmt.Println("# dns-resolver - starting...")
 	p, listenError := net.ListenPacket("udp", fmt.Sprintf(":%d", resolverPort))
 	if listenError != nil {
@@ -85,7 +84,7 @@ func StartDNSResolver() error {
 }
 
 // SetupDNSResolver sets up the DNS resolver
-func SetupDNSResolver(uid int, gid int, domain string) error {
+func SetupDNSResolver(uid int, gid int, domain string, resolverPort int) error {
 	fmt.Printf("# creating resolver directory %s...", resolverDir)
 
 	mkdirError := os.MkdirAll(resolverDir, 0755)
@@ -101,9 +100,9 @@ func SetupDNSResolver(uid int, gid int, domain string) error {
 	fmt.Println("done")
 
 	resolverFilePath := resolverDir + "/" + domain
-	resolverTmpl := `nameserver 127.0.0.1
-port 8053
-`
+	resolverTmpl := fmt.Sprintf(`nameserver 127.0.0.1
+port %d
+`, resolverPort)
 
 	fmt.Printf("# creating resolver file %s...", resolverFilePath)
 
