@@ -45,22 +45,27 @@ func (h *reverseProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	serviceID := getServiceID(r.Host, r.URL.Path)
 
+	if _, ok := h.serviceMap[serviceID]; !ok {
+		serviceID = getServiceID(r.Host, "/")
+	}
+
+	if _, ok := h.serviceMap[serviceID]; !ok {
+		fmt.Fprintf(w, "buoy - nothing to see here")
+		return
+	}
+
 	if proxy, ok := proxies[serviceID]; ok {
 		proxy.ServeHTTP(w, r)
 		return
 	}
 
-	if servicePort, ok := h.serviceMap[serviceID]; ok {
-		proxy := httputil.NewSingleHostReverseProxy(&url.URL{
-			Scheme: "http",
-			Host:   fmt.Sprintf("localhost:%d", servicePort),
-		})
-		proxies[serviceID] = proxy
-		proxy.ServeHTTP(w, r)
-		return
-	}
-
-	fmt.Fprintf(w, "buoy - nothing to see here")
+	servicePort := h.serviceMap[serviceID]
+	proxy := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("localhost:%d", servicePort),
+	})
+	proxies[serviceID] = proxy
+	proxy.ServeHTTP(w, r)
 }
 
 // StartReverseProxy starts the reverse proxy
