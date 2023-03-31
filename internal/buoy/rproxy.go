@@ -77,5 +77,5 @@ func StartReverseProxy(services []Service, certFile string, keyFile string) erro
 		Handler: h,
 	}
 	err := reverseProxyServer.ListenAndServeTLS(certFile, keyFile)
-	return fmt.Errorf("error listening and serving TLS: %s", err)
+	return fmt.Errorf("error listening and serving tls: %s", err)
 }

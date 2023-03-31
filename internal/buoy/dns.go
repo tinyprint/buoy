@@ -3,9 +3,13 @@ package buoy
 import (
 	"fmt"
 	"net"
+	"os"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
+
+const resolverDir = "/etc/resolver"
+const resolverPort = 8053
 
 func handlePacket(pc net.PacketConn, addr net.Addr, buf []byte) error {
 	p := dnsmessage.Parser{}
@@ -61,7 +65,7 @@ func handle(pc net.PacketConn, addr net.Addr, buf []byte) {
 // StartDNSResolver starts the DNS resolver
 func StartDNSResolver() error {
 	fmt.Println("# dns-resolver - starting...")
-	p, listenError := net.ListenPacket("udp", ":8053")
+	p, listenError := net.ListenPacket("udp", fmt.Sprintf(":%d", resolverPort))
 	if listenError != nil {
 		return fmt.Errorf("error starting dns-resolver: %s", listenError)
 	}
@@ -78,4 +82,52 @@ func StartDNSResolver() error {
 		}
 		go handle(p, addr, buf[:n])
 	}
+}
+
+// SetupDNSResolver sets up the DNS resolver
+func SetupDNSResolver(uid int, gid int, domain string) error {
+	fmt.Printf("# creating resolver directory %s...", resolverDir)
+
+	mkdirError := os.MkdirAll(resolverDir, 0755)
+	if mkdirError != nil {
+		return fmt.Errorf("error creating resolver directory: %s", mkdirError)
+	}
+
+	chownError := os.Chown(resolverDir, uid, gid)
+	if chownError != nil {
+		return fmt.Errorf("error changing resolver directory owner: %s", chownError)
+	}
+
+	fmt.Println("done")
+
+	resolverFilePath := resolverDir + "/" + domain
+	resolverTmpl := `nameserver 127.0.0.1
+port 8053
+`
+
+	fmt.Printf("# creating resolver file %s...", resolverFilePath)
+
+	// create resolver file if it doesn't exist
+	resolverFile, openError := os.OpenFile(resolverFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if openError != nil {
+		return fmt.Errorf("error opening/creating resolver file %s: %s", resolverFilePath, openError)
+	}
+
+	_, writeError := resolverFile.WriteString(resolverTmpl)
+	if writeError != nil {
+		return fmt.Errorf("error writing resolver file %s: %s", resolverFile.Name(), writeError)
+	}
+
+	if err := resolverFile.Close(); err != nil {
+		return fmt.Errorf("error closing %s: %s", resolverFile.Name(), err)
+	}
+
+	chownFileError := os.Chown(resolverFilePath, uid, gid)
+	if chownFileError != nil {
+		return fmt.Errorf("error changing resolver file owner %s: %s", resolverFilePath, chownFileError)
+	}
+
+	fmt.Println("done")
+
+	return nil
 }

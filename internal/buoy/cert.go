@@ -11,20 +11,15 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"strings"
 	"time"
 )
 
-func domainToFileName(domain string) string {
-	return strings.ReplaceAll(domain, ".", "-")
-}
-
 func getCertPath(configDir string, domain string) string {
-	return path.Join(configDir, domainToFileName(domain)+"-cert.pem")
+	return path.Join(configDir, DomainToFilename(domain)+"-cert.pem")
 }
 
 func getKeyPath(configDir string, domain string) string {
-	return path.Join(configDir, domainToFileName(domain)+"-key.pem")
+	return path.Join(configDir, DomainToFilename(domain)+"-key.pem")
 }
 
 // checkCert checks if a certificate exists for the given domain and returns the path to the
@@ -46,7 +41,7 @@ func checkCert(configDir string, domain string) (string, string, bool) {
 
 // generateCert generates a self-signed certificate for the given domain and returns the path to the
 // certificate and key
-func generateCert(configDir string, domain string) (string, string, error) {
+func generateCert(uid int, gid int, configDir string, domain string) (string, string, error) {
 	priv, generatePrivateKeyError := rsa.GenerateKey(rand.Reader, 2048)
 	if generatePrivateKeyError != nil {
 		return "", "", fmt.Errorf("failed to generate private key: %s", generatePrivateKeyError)
@@ -126,13 +121,22 @@ func generateCert(configDir string, domain string) (string, string, error) {
 
 	fmt.Println("done")
 
+	chownCertError := os.Chown(certOut.Name(), uid, gid)
+	if chownCertError != nil {
+		return "", "", fmt.Errorf("error changing cert owner: %s", chownCertError)
+	}
+
+	chownKeyError := os.Chown(keyOut.Name(), uid, gid)
+	if chownKeyError != nil {
+		return "", "", fmt.Errorf("error changing cert key owner: %s", chownKeyError)
+	}
+
 	return certOut.Name(), keyOut.Name(), nil
 }
 
-func trustCert(certPath string, sudoPassword string) error {
+// trustCert adds the given certificate to the system keychain
+func trustCert(certPath string) error {
 	cmd := exec.Command(
-		"sudo",
-		"-S",
 		"security",
 		"add-trusted-cert",
 		"-d",
@@ -140,7 +144,6 @@ func trustCert(certPath string, sudoPassword string) error {
 		"-k", "/Library/Keychains/System.keychain",
 		certPath,
 	)
-	cmd.Stdin = strings.NewReader(sudoPassword)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to add trusted cert: %s", err)
 	}
@@ -148,28 +151,34 @@ func trustCert(certPath string, sudoPassword string) error {
 	return nil
 }
 
-// GetOrCreateCert gets or creates a certificate for the given domain and returns the path to the
+// SetupCert gets or creates a certificate for the given domain and returns the path to the
 // certificate and key. If the certificate is created, it is also added to the system keychain.
-func GetOrCreateCert(
-	configDir string,
-	domain string,
-	getPassword func() string,
-) (string, string, error) {
-	certPath, keyPath, certExists := checkCert(configDir, domain)
+func SetupCert(uid int, gid int, configDir string, domain string) error {
+	certPath, _, certExists := checkCert(configDir, domain)
 	if certExists {
-		return certPath, keyPath, nil
+		fmt.Printf("# cert already exists for %s at %s", domain, certPath)
+		return nil
 	}
 
-	certPath, keyPath, certGenError := generateCert(configDir, domain)
+	certPath, _, certGenError := generateCert(uid, gid, configDir, domain)
 	if certGenError != nil {
-		return "", "", fmt.Errorf("failed to generate cert: %s", certGenError)
+		return fmt.Errorf("failed to generate cert: %s", certGenError)
 	}
 
 	fmt.Println("# cert - trusting cert, this will require your sudo password...")
-	sudoPassword := getPassword()
-	trustCertError := trustCert(certPath, sudoPassword)
+	trustCertError := trustCert(certPath)
 	if trustCertError != nil {
-		return "", "", fmt.Errorf("failed to trust cert: %s", trustCertError)
+		return fmt.Errorf("failed to trust cert: %s", trustCertError)
+	}
+
+	return nil
+}
+
+// GetCert returns the path to the certificate for the given domain
+func GetCert(configDir string, domain string) (string, string, error) {
+	certPath, keyPath, certExists := checkCert(configDir, domain)
+	if !certExists {
+		return "", "", fmt.Errorf("make sure to run `buoy -setup` first")
 	}
 
 	return certPath, keyPath, nil
