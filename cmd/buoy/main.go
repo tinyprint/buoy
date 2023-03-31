@@ -6,20 +6,9 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"syscall"
 
 	"github.com/tinyprint/buoy/internal/buoy"
-	"golang.org/x/term"
 )
-
-func getPassword() string {
-	fmt.Print("Enter password: ")
-	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
-	if err != nil {
-		return ""
-	}
-	return string(bytePassword)
-}
 
 const domain = "b.com"
 const configDir = "$HOME/.buoy"
