@@ -94,6 +94,14 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+	go func() {
+		defer wg.Done()
+		err := buoy.StartRedirectServer()
+		if err != nil {
+			fmt.Printf("\nerror starting reverse proxy: %s\n", err.Error())
+			os.Exit(1)
+		}
+	}()
 
 	wg.Wait()
 }

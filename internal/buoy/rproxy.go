@@ -84,3 +84,24 @@ func StartReverseProxy(services []Service, certFile string, keyFile string) erro
 	err := reverseProxyServer.ListenAndServeTLS(certFile, keyFile)
 	return fmt.Errorf("error listening and serving tls: %s", err)
 }
+
+// StartRedirectServer creates a server that redirects all http requests to https
+func StartRedirectServer() error {
+	fmt.Println("# redirect - starting...")
+
+	redirectServer := &http.Server{
+		Addr:    ":80",
+		Handler: http.HandlerFunc(redirectTLS),
+	}
+	err := redirectServer.ListenAndServe()
+	return fmt.Errorf("error listening and serving redirect server: %s", err)
+}
+
+func redirectTLS(w http.ResponseWriter, r *http.Request) {
+	// Create a URL with the same host but with the https scheme and redirect
+	target := fmt.Sprintf("https://%s%s", r.Host, r.URL.Path)
+	if len(r.URL.RawQuery) > 0 {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusMovedPermanently)
+}
