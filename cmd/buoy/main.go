@@ -3,69 +3,105 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
+	"strconv"
+	"sync"
 
-	"github.com/tinyprint/buoy/internal/pkg/config"
-	"github.com/tinyprint/buoy/internal/pkg/dns"
-	"github.com/tinyprint/buoy/internal/pkg/rproxy"
+	"github.com/tinyprint/buoy/internal/buoy"
 )
 
-func startDNSResolver() {
-	fmt.Println("starting Buoy DNS resolver")
-	p, err := net.ListenPacket("udp", ":8053")
-	if err != nil {
-		fmt.Printf("error starting DNS resolver: %s", err)
-		os.Exit(1)
-	}
-	defer p.Close()
-
-	for {
-		buf := make([]byte, 512)
-		n, addr, err := p.ReadFrom(buf)
-		fmt.Printf("connection [%s]...\n", addr.String())
-		if err != nil {
-			fmt.Printf("connection error [%s]: %s\n", addr.String(), err)
-			continue
-		}
-		go dns.HandlePacket(p, addr, buf[:n])
-	}
-}
-
-var (
-	configDir = flag.String(
-		"config-dir",
-		"$HOME/.buoy",
-		"Directory to store Buoy configuration",
-	)
-	initialize = flag.Bool(
-		"init",
-		false,
-		"Initialize Buoy configuration and SSL Certs",
-	)
-)
+const domain = "b.com"
+const configDir = "$HOME/.buoy"
+const resolverPort = 8053
 
 func main() {
+	setup := flag.Bool("setup", false, "setup the buoy config directory and certs")
 	flag.Parse()
 
-	if *initialize == true {
-		fmt.Println("initializing Buoy configuration and SSL Certs")
-		config.CreateConfig(*configDir)
+	if *setup {
+		sudo := os.Getenv("SUDO_USER")
+		if sudo == "" {
+			fmt.Println("\nyou must run this command with sudo")
+			os.Exit(1)
+		}
 
-		// TODO: Create SSL Certs and add them to keychain
+		uid, uidError := strconv.Atoi(os.Getenv("SUDO_UID"))
+		gid, gidError := strconv.Atoi(os.Getenv("SUDO_GID"))
+		if uidError != nil || gidError != nil {
+			fmt.Println("\nerror getting sudo user id")
+			os.Exit(1)
+		}
+
+		dnsError := buoy.SetupDNSResolver(uid, gid, domain, resolverPort)
+		if dnsError != nil {
+			fmt.Printf("\nerror setting up dns resolver: %s\n", dnsError.Error())
+			os.Exit(1)
+		}
+
+		configDir, configDirError := buoy.SetupConfigDir(uid, gid, configDir)
+		if configDirError != nil {
+			fmt.Printf("\nerror setting up config dir: %s\n", configDirError.Error())
+			os.Exit(1)
+		}
+
+		certError := buoy.SetupCert(uid, gid, configDir, domain)
+		if certError != nil {
+			fmt.Printf("\nerror setting up ssl cert: %s\n", certError.Error())
+			os.Exit(1)
+		}
+
+		os.Exit(0)
 	}
 
-	config, err := config.LoadConfig(*configDir)
-	if err != nil {
-		fmt.Printf("error loading Buoy configuration: %s\n", err)
+	serviceArgs := flag.Args()
+	services, parseServicesError := buoy.ParseServices(domain, serviceArgs)
+	if parseServicesError != nil {
+		fmt.Printf(
+			"\nerror parsing services: %s\n  a service should be in the form of subdomain/path:port\n",
+			parseServicesError.Error(),
+		)
 		os.Exit(1)
 	}
 
-	// Lightster says to use a channel
-	go startDNSResolver()
-	err = rproxy.StartReverseProxy(config)
-	if err != nil {
-		fmt.Printf("error starting Buoy reverse proxy: %s\n", err)
+	configDir, configDirError := buoy.GetConfigDir(configDir)
+	if configDirError != nil {
+		fmt.Printf("\nerror getting config dir: %s\n", configDirError.Error())
 		os.Exit(1)
 	}
+
+	certFile, keyFile, certError := buoy.GetCert(configDir, domain)
+	if certError != nil {
+		fmt.Printf("\nerror getting ssl cert: %s\n", certError.Error())
+		os.Exit(1)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		dnsError := buoy.StartDNSResolver(resolverPort)
+		if dnsError != nil {
+			fmt.Printf("\nerror starting dns resolver: %s\n", dnsError.Error())
+			os.Exit(1)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		rproxyError := buoy.StartReverseProxy(services, certFile, keyFile)
+		if rproxyError != nil {
+			fmt.Printf("\nerror starting reverse proxy: %s\n", rproxyError.Error())
+			os.Exit(1)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		err := buoy.StartRedirectServer()
+		if err != nil {
+			fmt.Printf("\nerror starting reverse proxy: %s\n", err.Error())
+			os.Exit(1)
+		}
+	}()
+
+	wg.Wait()
 }
